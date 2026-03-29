@@ -1,0 +1,12 @@
+name: LobbyJump
+version: 1.0.0
+main: de.lobbyjump.LobbyJump
+api-version: 1.21
+authors: [LobbyJump]
+description: Jump-and-Run Plugin mit Wollblöcken
+
+commands:
+  lobbyjump:
+    description: LobbyJump Befehl
+    usage: /lobbyjump <stop>
+    aliases: [lj]
