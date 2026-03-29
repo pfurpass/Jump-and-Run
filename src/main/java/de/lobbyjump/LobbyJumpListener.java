@@ -76,11 +76,9 @@ public class LobbyJumpListener implements Listener {
         player.playSound(spawnLoc, Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.2f);
     }
 
-    // ── Spawnt ein leuchtendes BlockDisplay minimal größer als der Block ──
-    // Skalierung 1.02 + Offset -0.01 → kein Z-Fighting mit dem echten Block
     private BlockDisplay spawnGlowDisplay(Location blockLoc, Material mat) {
         float scale  = 0.99f;
-        float offset = -(scale - 1f) / 2f; // zentriert: -0.01
+        float offset = -(scale - 1f) / 2f;
 
         Location displayLoc = blockLoc.clone();
         displayLoc.setYaw(0);
@@ -103,8 +101,26 @@ public class LobbyJumpListener implements Listener {
     }
 
     private void removeGlowDisplay(BlockDisplay display) {
-        if (display != null && !display.isDead()) {
-            display.remove();
+        if (display != null && !display.isDead()) display.remove();
+    }
+
+    // ── Formatiert Millisekunden → "4.23 sek." / "1:32 min." / "1:02:05 h" ──
+    private String formatTime(long millis) {
+        long totalSec = millis / 1000;
+        long ms       = millis % 1000;
+        long sek      = totalSec % 60;
+        long min      = (totalSec / 60) % 60;
+        long std      = totalSec / 3600;
+
+        if (std > 0) {
+            // 1:02:05 h
+            return String.format("%d:%02d:%02d §eh", std, min, sek);
+        } else if (min > 0) {
+            // 1:32 min.
+            return String.format("%d:%02d §emin.", min, sek);
+        } else {
+            // 4.23 sek.
+            return String.format("%d.%02d §esek.", sek, ms / 10);
         }
     }
 
@@ -138,23 +154,27 @@ public class LobbyJumpListener implements Listener {
             showPulseParticle(session.nextBlock);
         }
 
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§eScore§8: §a" + session.score));
+        // Action Bar: Score + Zeit
+        long elapsed = System.currentTimeMillis() - session.startTime;
+        String timeStr = formatTime(elapsed);
+        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(
+            "§eScore§8: §a" + session.score +
+            " §8| §e" + timeStr
+        ));
     }
 
     private void onLandOnNextBlock(Player player, GameSession session) {
         Location oldBlock    = session.currentBlock.clone();
         Location landedBlock = session.nextBlock.clone();
-        BlockDisplay oldGlow = session.glowDisplay; // Glow-Entity des gelandeten Blocks entfernen
+        BlockDisplay oldGlow = session.glowDisplay;
 
         player.playSound(player.getLocation(), Sound.ENTITY_SLIME_SQUISH_SMALL, 1f, 1f);
         landedBlock.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
             landedBlock.clone().add(0.5, 0.8, 0.5), 15, 0.3, 0.2, 0.3, 0);
 
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            // Glow-Display des gelandeten Blocks entfernen (Spieler steht drauf, kein Glow nötig)
             removeGlowDisplay(oldGlow);
 
-            // Alten Block entfernen
             oldBlock.getBlock().setType(Material.AIR);
             oldBlock.getWorld().spawnParticle(Particle.POOF,
                 oldBlock.clone().add(0.5, 0.5, 0.5), 20, 0.3, 0.3, 0.3, 0.05);
@@ -162,13 +182,12 @@ public class LobbyJumpListener implements Listener {
             session.currentBlock = landedBlock;
             session.currentBlock.getBlock().setType(POINT);
 
-            // Neuen Zielblock + Glow-Display spawnen
             Location newTarget = findNextBlock(landedBlock);
             newTarget.getBlock().setType(WOOL);
             BlockDisplay newGlow = spawnGlowDisplay(newTarget, WOOL);
 
-            session.nextBlock    = newTarget;
-            session.glowDisplay  = newGlow;
+            session.nextBlock   = newTarget;
+            session.glowDisplay = newGlow;
 
             session.triggeredThisBlock = false;
             session.waitingForRemove   = false;
@@ -180,7 +199,6 @@ public class LobbyJumpListener implements Listener {
 
     private Location findNextBlock(Location from) {
         World world = from.getWorld();
-
         for (int attempt = 0; attempt < 50; attempt++) {
             double angle = random.nextDouble() * 2 * Math.PI;
             int dy = random.nextInt(3) - 1;
@@ -219,7 +237,6 @@ public class LobbyJumpListener implements Listener {
         if (session == null) return;
         if (session.task != null) session.task.cancel();
 
-        // Glow-Entity aufräumen
         removeGlowDisplay(session.glowDisplay);
 
         if (session.currentBlock.getBlock().getType() == POINT)
@@ -231,9 +248,11 @@ public class LobbyJumpListener implements Listener {
         if (!player.isOnline()) return;
 
         if (fell) {
+            long elapsed = System.currentTimeMillis() - session.startTime;
             Location back = session.startPlate.clone().add(0.5, 1, 0.5);
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> player.teleport(back), 5L);
-            player.sendMessage("§c§lAbgestürzt! §eBlöcke geschafft: §6" + session.score);
+            player.sendMessage("§c§lAbgestürzt!");
+            player.sendMessage("§eBlöcke§8: §a" + session.score + " §8| §eZeit§8: §a" + formatTime(elapsed));
             player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_HURT, 1f, 0.7f);
         }
     }
@@ -247,9 +266,10 @@ public class LobbyJumpListener implements Listener {
     private static class GameSession {
         final Player   player;
         final Location startPlate;
+        final long     startTime;   // System.currentTimeMillis() beim Start
         Location     currentBlock;
         Location     nextBlock;
-        BlockDisplay glowDisplay;   // Glow-Entity des aktuellen Zielblocks
+        BlockDisplay glowDisplay;
         BukkitTask   task;
         boolean triggeredThisBlock = false;
         boolean waitingForRemove   = false;
@@ -259,6 +279,7 @@ public class LobbyJumpListener implements Listener {
         GameSession(Player p, Location plate, Location cur, Location next, BlockDisplay glow) {
             this.player       = p;
             this.startPlate   = plate;
+            this.startTime    = System.currentTimeMillis();
             this.currentBlock = cur;
             this.nextBlock    = next;
             this.glowDisplay  = glow;
