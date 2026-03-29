@@ -132,6 +132,12 @@ public class LobbyJumpListener implements Listener {
             return;
         }
 
+        // Action Bar läuft IMMER – unabhängig von waitingForRemove
+        long elapsed = System.currentTimeMillis() - session.startTime;
+        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(
+            "§eScore§8: §a" + session.score + " §8| §e" + formatTime(elapsed)
+        ));
+
         if (session.waitingForRemove) return;
 
         Block underFeet = player.getLocation().getBlock().getRelative(BlockFace.DOWN);
@@ -153,14 +159,6 @@ public class LobbyJumpListener implements Listener {
             session.particleTick = 0;
             showPulseParticle(session.nextBlock);
         }
-
-        // Action Bar: Score + Zeit
-        long elapsed = System.currentTimeMillis() - session.startTime;
-        String timeStr = formatTime(elapsed);
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(
-            "§eScore§8: §a" + session.score +
-            " §8| §e" + timeStr
-        ));
     }
 
     private void onLandOnNextBlock(Player player, GameSession session) {
